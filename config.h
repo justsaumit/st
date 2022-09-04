@@ -228,6 +228,11 @@ static uint forcemousemod = ShiftMask;
 #define MODKEY Mod1Mask
 #define TERMMOD (ControlMask|ShiftMask)
 
+/*defining External pipe commands */
+static char *openurlcmd[] = { "/bin/sh", "-c", "st-urlhandler -o", "externalpipe", NULL };
+static char *copyurlcmd[] = { "/bin/sh", "-c", "st-urlhandler -c", "externalpipe", NULL };
+static char *copyoutput[] = { "/bin/sh", "-c", "st-copyout"      , "externalpipe", NULL };
+
 /*
  * Internal mouse shortcuts.
  * Beware that overloading Button1 will disable the selection.
@@ -252,7 +257,7 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_Prior,       zoom,           {.f = +1} },
 	{ TERMMOD,              XK_Next,        zoom,           {.f = -1} },
 	{ TERMMOD,              XK_Home,        zoomreset,      {.f =  0} },
-//setting vim keys (j,k) for zooming and u for reset
+//setting termmod(ctrl+shift) + vim keys (j,k) for zooming and u for reset
 	{ TERMMOD,              XK_J,           zoom,           {.f = -1} },
 	{ TERMMOD,              XK_K,           zoom,           {.f = +1} },
 	{ TERMMOD,              XK_U,           zoomreset,      {.f =  0} },
@@ -266,7 +271,11 @@ static Shortcut shortcuts[] = {
 	{ MODKEY,               XK_Down,        kscrolldown,    {.i =  1} },
 //to scroll thru terminal page-wise
 	{ MODKEY,               XK_Page_Up,     kscrollup,      {.i = -1} },
-	{ MODKEY,               XK_Page_Down,   kscrolldown,    {.i = -1} },
+        { MODKEY,               XK_Page_Down,   kscrolldown,    {.i = -1} },
+//externalpipe bindings
+        { MODKEY,               XK_O,           externalpipe,   {.v = openurlcmd } },
+        { MODKEY,               XK_L,           externalpipe,   {.v = copyurlcmd } },
+        { MODKEY,               XK_K,           externalpipe,   {.v = copyoutput } },
 };
 
 /*
