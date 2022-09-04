@@ -1,13 +1,13 @@
 diff --git a/Makefile b/Makefile
-index 470ac86..38240da 100644
+index 6dfa212..2ffd3c8 100644
 --- a/Makefile
 +++ b/Makefile
 @@ -4,7 +4,7 @@
  
  include config.mk
  
--SRC = st.c x.c
-+SRC = st.c x.c hb.c
+-SRC = st.c x.c boxdraw.c
++SRC = st.c x.c boxdraw.c hb.c
  OBJ = $(SRC:.c=.o)
  
  all: options st
@@ -18,9 +18,9 @@ index 470ac86..38240da 100644
 -x.o: arg.h config.h st.h win.h
 +x.o: arg.h config.h st.h win.h hb.h
 +hb.o: st.h
+ boxdraw.o: config.h st.h boxdraw_data.h
  
  $(OBJ): config.h config.mk
- 
 diff --git a/config.mk b/config.mk
 index c070a4a..3d236f0 100644
 --- a/config.mk
@@ -42,10 +42,10 @@ index c070a4a..3d236f0 100644
  STCPPFLAGS = -DVERSION=\"$(VERSION)\" -D_XOPEN_SOURCE=600
 diff --git a/hb.c b/hb.c
 new file mode 100644
-index 0000000..f9c4f76
+index 0000000..a47300e
 --- /dev/null
 +++ b/hb.c
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,149 @@
 +#include <stdlib.h>
 +#include <stdio.h>
 +#include <math.h>
@@ -69,10 +69,11 @@ index 0000000..f9c4f76
 +static HbFontMatch *hbfontcache = NULL;
 +
 +/*
-+ * Replace 0 with a list of font features, wrapped in FEATURE macro, e.g.
++ * Poplulate the array with a list of font features, wrapped in FEATURE macro,
++ * e. g.
 + * FEATURE('c', 'a', 'l', 't'), FEATURE('d', 'l', 'i', 'g')
 + */
-+hb_feature_t features[] = { 0 };
++hb_feature_t features[] = { };
 +
 +void
 +hbunloadfonts()
@@ -144,6 +145,10 @@ index 0000000..f9c4f76
 +	for (int i = 0, specidx = 0; i < len; i++) {
 +		if (glyphs[i].mode & ATTR_WDUMMY)
 +			continue;
++		if (glyphs[i].mode & ATTR_BOXDRAW) {
++			specidx++;
++			continue;
++		}
 +
 +		if (codepoints[i] != specs[specidx].glyph)
 +			((Glyph *)glyphs)[i].mode |= ATTR_LIGA;
@@ -176,7 +181,7 @@ index 0000000..f9c4f76
 +	}
 +
 +	/* Shape the segment. */
-+	hb_shape(font, buffer, features, sizeof(features));
++	hb_shape(font, buffer, features, sizeof(features)/sizeof(hb_feature_t));
 +
 +	/* Get new glyph info. */
 +	hb_glyph_info_t *info = hb_buffer_get_glyph_infos(buffer, NULL);
@@ -203,21 +208,21 @@ index 0000000..07888df
 +void hbunloadfonts();
 +void hbtransform(XftGlyphFontSpec *, const Glyph *, size_t, int, int);
 diff --git a/st.c b/st.c
-index edec064..ea13c13 100644
+index 248728f..9101ae8 100644
 --- a/st.c
 +++ b/st.c
-@@ -2652,7 +2652,8 @@ draw(void)
+@@ -2584,7 +2584,8 @@ draw(void)
+ 
  	drawregion(0, 0, term.col, term.row);
- 	if (term.scr == 0)
- 		xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
--				term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
-+				term.ocx, term.ocy, term.line[term.ocy][term.ocx],
-+				term.line[term.ocy], term.col);
+ 	xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
+-			term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
++			term.ocx, term.ocy, term.line[term.ocy][term.ocx],
++			term.line[term.ocy], term.col);
  	term.ocx = cx;
  	term.ocy = term.c.y;
  	xfinishdraw();
 diff --git a/st.h b/st.h
-index f44e1d3..00c796c 100644
+index 8d26273..133dc08 100644
 --- a/st.h
 +++ b/st.h
 @@ -11,7 +11,8 @@
@@ -230,11 +235,11 @@ index f44e1d3..00c796c 100644
  				(a).bg != (b).bg)
  #define TIMEDIFF(t1, t2)	((t1.tv_sec-t2.tv_sec)*1000 + \
  				(t1.tv_nsec-t2.tv_nsec)/1E6)
-@@ -33,6 +34,7 @@ enum glyph_attribute {
- 	ATTR_WRAP       = 1 << 8,
+@@ -34,6 +35,7 @@ enum glyph_attribute {
  	ATTR_WIDE       = 1 << 9,
  	ATTR_WDUMMY     = 1 << 10,
-+	ATTR_LIGA       = 1 << 11,
+ 	ATTR_BOXDRAW    = 1 << 11,
++	ATTR_LIGA       = 1 << 12,
  	ATTR_BOLD_FAINT = ATTR_BOLD | ATTR_FAINT,
  };
  
@@ -252,7 +257,7 @@ index a6ef1b9..bc0d180 100644
  void xfinishdraw(void);
  void xloadcols(void);
 diff --git a/x.c b/x.c
-index 210f184..f6d67ef 100644
+index 9b29264..af93cad 100644
 --- a/x.c
 +++ b/x.c
 @@ -19,6 +19,7 @@ char *argv0;
@@ -273,7 +278,7 @@ index 210f184..f6d67ef 100644
  	/* Free the loaded fonts in the font cache.  */
  	while (frclen > 0)
  		XftFontClose(xw.dpy, frc[--frclen].font);
-@@ -1229,7 +1233,7 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
+@@ -1231,7 +1235,7 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
  		mode = glyphs[i].mode;
  
  		/* Skip dummy wide-character spacing. */
@@ -282,7 +287,7 @@ index 210f184..f6d67ef 100644
  			continue;
  
  		/* Determine font for glyph if different from previous glyph. */
-@@ -1336,6 +1340,9 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
+@@ -1343,6 +1347,9 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
  		numspecs++;
  	}
  
@@ -292,7 +297,7 @@ index 210f184..f6d67ef 100644
  	return numspecs;
  }
  
-@@ -1485,14 +1492,17 @@ xdrawglyph(Glyph g, int x, int y)
+@@ -1496,14 +1503,17 @@ xdrawglyph(Glyph g, int x, int y)
  }
  
  void
